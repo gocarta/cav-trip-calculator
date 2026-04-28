@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Care-a-Van Price Calculator</title>
+        <meta charset='utf-8' />
+        <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+        <script src="https://unpkg.com/maplibre-gl@^4.7.1/dist/maplibre-gl.js"></script>
+        <link href="https://unpkg.com/maplibre-gl@^4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+        <script src="https://cdn.maptiler.com/maptiler-geocoding-control/v3.0.0/maplibregl.umd.js"></script>
+
+        <!-- font -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+
+        <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+
+        <style>
+            * {
+                font-family: "Inter", sans-serif;
+                font-optical-sizing: auto;
+                font-style: normal;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+            }
+
+            .maplibregl-popup-content {
+                white-space: pre-line;
+            }
+
+            #app {
+                bottom: 0;
+                left: 0;
+                right: 0;
+                position: absolute;
+                top: 0;
+            }
+            #map {
+                bottom: 30px;
+                left: 0;
+                right: 0;
+                position: absolute;
+                top: 56px;                
+            }
+
+            #footer {
+                background: #004360;
+                bottom: 0;
+                height: 30px;
+                position: absolute;
+                width: 100%;
+                z-index: 99;
+            }
+
+            #footer-text {
+                color: lightgray;
+                left: 10px;
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+            }
+
+            #header {
+                background-color: #00D3EB;
+                display: block;
+                height: 56px;
+                position: relative;
+                width: 100%;
+                z-index: 99;
+            }
+
+            #header #text {
+                /* font-size: 16px;
+                font-weight: 400;
+                letter-spacing: .32px; */
+
+
+                left: 25px;
+                position: absolute;
+                color: whitesmoke;
+                top: 50%;
+                transform: translateY(-50%);
+            }
+
+            #pagename {
+                display: inline-block;
+                font-size: 26px;
+                font-weight: bold;
+            }
+
+            @media screen and (max-width: 800px) {
+                #footer {
+                    font-size: 12px;
+                }
+                #header #text {
+                    left: 15px;
+                }
+            }
+
+            .marker {
+                border: 2px solid #004360;
+                /* background: #00A3BD; */
+                border-radius: 26px;
+                cursor: pointer;
+                height: 26px;
+                text-align: center;
+                width: 26px;
+            }
+            .marker:hover {
+                height: 32px;
+                width: 32px;
+            }
+            .marker-inner {
+                background: #00A3BD;
+                border-radius: 25px;
+                height: 25px;
+                left: 50%;
+                position: absolute;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                width: 25px;
+            }
+            .marker-inner-text {
+                left: 50%;
+                position: absolute;
+                transform: translate(-50%, -50%);
+                top: 50%;
+            }
+        </style>
+        <style>
+            #address-panel {
+                position: absolute;
+                top: 72px;          /* below the header */
+                left: 12px;
+                z-index: 100;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                padding: 12px;
+                width: 500px;
+                font-size: 14px;
+            }
+
+            #address-panel label {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: 500;
+            }
+
+            #address-panel input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 6px 8px;
+                margin-top: 4px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+
+            #address-panel button {
+                width: 100%;
+                margin-top: 8px;
+                padding: 8px;
+                border: none;
+                border-radius: 6px;
+                background-color: #00A3BD;
+                color: white;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            #address-panel button:hover {
+                background-color: #0089a0;
+            }
+
+            /* Mobile adjustments */
+            @media screen and (max-width: 800px) {
+                #address-panel {
+                    width: calc(100% - 24px);
+                    left: 12px;
+                    right: 12px;
+                }
+            }
+
+            .autocomplete-list {
+                position: absolute;
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 2px;
+                max-height: 200px;
+                overflow-y: auto;
+                z-index: 999;
+                width: 100%;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            }
+
+            .autocomplete-item {
+                padding: 8px 10px;
+                cursor: pointer;
+            }
+
+            .autocomplete-item:hover {
+                background: #f1f5f9;
+            }
+
+            .level-badge {
+                min-width: 72px;
+                text-align: center;
+                padding: 4px 8px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 600;
+                background: #eee;
+                color: #333;
+            }
+
+            .level-1 { background:#AD08E6; color:white; }
+            .level-2 { background:#F00; color:white; }
+            .level-3 { background:#FF0; color:#000; }
+            .level-none { background:#ccc; color:#444; }
+            
+        </style>
+        <script>
+            window.app = {
+                config: {
+                    maptiler_api_key: "1sBO0sT8YfKHdUNtwPrc",
+                    cav_level_1: "./data/cav-level-1.geojson",
+                    cav_level_2: "./data/cav-level-2.geojson",
+                    cav_level_3: "./data/cav-level-3.geojson",                    
+                    routes: "https://gocarta.s3.us-east-2.amazonaws.com/public/data/simple_bus_routes/v1/data.lines.geojson"
+                },
+                data: {
+                },
+                state: {
+                    auth: null,
+                    markers: {
+                    }
+                }
+            };
+        </script>
+    </head>
+    <body>
+        <div id="app">
+            <div id="header">
+                <div id="text">
+                    <div id="pagename">Care-a-Van Price Calculator: Work in Progress</div>
+                </div>
+            </div>
+            <div id="map"></div>
+            <div id="footer">
+                <div id="footer-text">
+                    Built by CARTA with MapLibreGL.
+                </div>
+            </div>
+            <div id="address-panel">
+                <label>
+                    From:
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="from-address" placeholder="Enter start address" />
+                        <span id="from-level" class="level-badge">—</span>
+                    </div>
+                </label>
+
+                <label>
+                    To:
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="text" id="to-address" placeholder="Enter destination" />
+                        <span id="to-level" class="level-badge">—</span>
+                    </div>
+                </label>
+
+                <button id="calculate-btn">Calculate</button>
+            </div>
+        </div>
+        <script>        
+            async function geocodeAddress(query) {
+                const xmin = -86.30115090953136;
+                const xmax = -84.31179646902687;
+                const ymin = 34.77286314251063;
+                const ymax = 35.78081423504406;
+                const bbox = `${xmin},${ymin},${xmax},${ymax}`;
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${window.app.config.maptiler_api_key}&country=us&bbox=${bbox}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (!data.features || !data.features.length) {
+                    return null;
+                }
+
+                return data.features[0].geometry.coordinates; // [lng, lat]
+            }
+
+            function createOrMoveMarker(id, lngLat, color) {
+                if (!window.app.state.markers[id]) {
+                    window.app.state.markers[id] = new maplibregl.Marker({
+                        color,
+                        draggable: true
+                    })
+                    .setLngLat(lngLat)
+                    .addTo(map);
+
+                    window.app.state.markers[id].on("drag", () => {
+                        updateLine();
+                        updateLevelBadge(id, window.app.state.markers[id].getLngLat().toArray());
+                    });
+                } else {
+                    window.app.state.markers[id].setLngLat(lngLat);
+                }
+
+                updateLevelBadge(id, lngLat);
+                map.easeTo({ center: lngLat, zoom: 12 });
+            }
+
+            async function getSuggestions(query) {
+                if (query.length < 3) return [];
+
+                const xmin = -86.30115090953136;
+                const xmax = -84.31179646902687;
+                const ymin = 34.77286314251063;
+                const ymax = 35.78081423504406;
+                const bbox = `${xmin},${ymin},${xmax},${ymax}`;
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json` +
+                            `?autocomplete=true&country=us&limit=5&bbox=${bbox}&key=${window.app.config.maptiler_api_key}`;
+
+                const res = await fetch(url);
+                const data = await res.json();
+
+                return data.features || [];
+            }
+
+            var mapOptions = {
+                container: 'map', // container id
+                // Define the map syle (OpenStreetMap raster tiles)
+                style: "https://api.maptiler.com/maps/streets-v2-light/style.json?key=mYniYTe7rfEM5jAFdfKy",
+                center: [-85.310947, 35.055666], // starting position [lng, lat]
+                zoom: 11 // starting zoom
+            };
+
+            // zoom out more if on mobile
+            if (window.innerWidth < 800) {
+                mapOptions.zoom = 9;
+                mapOptions.attributionControl = false;
+            }
+
+            var map = new maplibregl.Map(mapOptions);
+
+            if (window.innerWidth < 800) {
+                map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+            }
+
+            function updateLine() {
+                const from = window.app.state.markers.from;
+                const to = window.app.state.markers.to;
+                if (!from || !to) return;
+
+                const newLine = {
+                    type: "Feature",
+                    geometry: {
+                        type: "LineString",
+                        coordinates: [
+                            from.getLngLat().toArray(),
+                            to.getLngLat().toArray()
+                        ]
+                    }
+                };
+
+                map.getSource("route-line").setData(newLine);
+            }
+
+            map.on('load', () => {
+                (async function load () {
+                    const res_routes = await fetch(window.app.config.routes);
+                    const routes_geojson = await res_routes.json();
+
+                    const res_cav_level_1 = await fetch(window.app.config.cav_level_1);
+                    app.data.cav_level_1_geojson = await res_cav_level_1.json();                    
+
+                    const res_cav_level_2 = await fetch(window.app.config.cav_level_2);
+                    app.data.cav_level_2_geojson = await res_cav_level_2.json();
+
+                    const res_cav_level_3 = await fetch(window.app.config.cav_level_3);
+                    app.data.cav_level_3_geojson = await res_cav_level_3.json();
+
+                    map.addSource('simple-bus-routes', {
+                        'type': 'geojson',
+                        'data': routes_geojson
+                    });
+
+                    map.addLayer({
+                        'id': 'routes-layer',
+                        'type': 'line',
+                        'source': 'simple-bus-routes',
+                        'layout': {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        'paint': {
+                            // This expression tells MapLibre: 
+                            // "Look at the 'stroke' property of the feature and use it as the color."
+                            // If 'stroke' is missing, default to '#000' (black).
+                            'line-color': "#000", 
+                            'line-width': 1,
+                            'line-opacity': 0.6                        
+                        }
+                    });
+                    
+                    map.addSource('cav-level-3', {
+                        'type': 'geojson',
+                        'data': app.data.cav_level_3_geojson
+                    });
+
+                    map.addLayer({
+                        'id': 'cav-level-3-layer',
+                        'type': 'fill',
+                        'source': 'cav-level-3',
+                        'layout': {
+
+                        },
+                        'paint': {
+                            'fill-color': '#FF0',   // light red
+                            'fill-opacity': 0.2
+                        }
+                    });
+                    
+                    map.addSource('cav-level-2', {
+                        'type': 'geojson',
+                        'data': app.data.cav_level_2_geojson
+                    });
+
+                    map.addLayer({
+                        'id': 'cav-level-2-layer',
+                        'type': 'fill',
+                        'source': 'cav-level-2',
+                        'layout': {
+
+                        },
+                        'paint': {
+                            'fill-color': '#F00',   // light red
+                            'fill-opacity': 0.2
+                        }
+                    });
+
+                    map.addSource('cav-level-1', {
+                        'type': 'geojson',
+                        'data': app.data.cav_level_1_geojson
+                    });
+
+                    map.addLayer({
+                        'id': 'cav-level-1-layer',
+                        'type': 'fill',
+                        'source': 'cav-level-1',
+                        'layout': {
+
+                        },
+                        'paint': {
+                            'fill-color': '#AD08E6',   // light blue
+                            'fill-opacity': 0.5
+                        }
+                    });                    
+                })();
+                
+                const fromCoord = [-85.35, 35.06];
+                const toCoord = [-85.25, 35.04];
+
+                map.addSource("route-line", {
+                    type: "geojson",
+                    data: {
+                        type: "Feature",
+                        geometry: {
+                            type: "LineString",
+                            coordinates: [fromCoord, toCoord]
+                        }
+                    }
+                });
+
+                map.addLayer({
+                    id: "route-line-layer",
+                    type: "line",
+                    source: "route-line",
+                    paint: {
+                        "line-color": "#0FFF00",
+                        "line-opacity": 1,
+                        "line-width": 4
+                    }
+                });
+
+                fromMarker.on("drag", updateLine);
+                toMarker.on("drag", updateLine);
+            });
+
+            
+            function detectProgramLevel(lngLat) {
+                const point = turf.point(lngLat);
+
+
+                if (window.app.data.cav_level_1_geojson.features.some(f => turf.booleanPointInPolygon(point, f.geometry))) {
+                    return 1;
+                }
+                if (window.app.data.cav_level_2_geojson.features.some(f => turf.booleanPointInPolygon(point, f.geometry))) {
+                    return 2;
+                }
+                if (window.app.data.cav_level_3_geojson.features.some(f => turf.booleanPointInPolygon(point, f.geometry))) {
+                    return 3;
+                }
+                return null;
+            }
+
+            function updateLevelBadge(markerId, lngLat) {
+                const level = detectProgramLevel(lngLat);
+                const badge = document.getElementById(`${markerId}-level`);
+
+                badge.className = "level-badge";
+
+                if (!level) {
+                    badge.textContent = "Outside";
+                    badge.classList.add("level-none");
+                    return;
+                }
+
+                badge.textContent = `Level ${level}`;
+                badge.classList.add(`level-${level}`);
+            }
+            
+            async function handleAddressInput(inputId, markerId, color) {
+                const input = document.getElementById(inputId);
+
+                async function geocodeAndPlace() {
+                    if (!input.value) return;
+
+                    const coords = await geocodeAddress(input.value);
+                    if (!coords) {
+                        alert("Address not found");
+                        return;
+                    }
+
+                    createOrMoveMarker(markerId, coords, color);
+                    updateLine();
+                }
+
+                input.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter") {
+                        geocodeAndPlace();
+                    }
+                });
+
+                input.addEventListener("blur", geocodeAndPlace);
+            }
+
+            function enableAutocomplete(inputId, markerId, color) {
+                const input = document.getElementById(inputId);
+                const wrapper = input.parentElement;
+                wrapper.style.position = "relative";
+
+                const list = document.createElement("div");
+                list.className = "autocomplete-list";
+                list.style.display = "none";
+                wrapper.appendChild(list);
+
+                let debounceTimer;
+
+                input.addEventListener("input", () => {
+                    clearTimeout(debounceTimer);
+
+                    debounceTimer = setTimeout(async () => {
+                        const value = input.value.trim();
+                        list.innerHTML = "";
+
+                        if (value.length < 3) {
+                            list.style.display = "none";
+                            return;
+                        }
+
+                        const suggestions = await getSuggestions(value);
+                        if (!suggestions.length) {
+                            list.style.display = "none";
+                            return;
+                        }
+
+                        suggestions.forEach(feature => {
+                            const item = document.createElement("div");
+                            item.className = "autocomplete-item";
+                            item.textContent = feature.place_name.replace(", United States", "");
+
+                            item.addEventListener("click", () => {
+                                input.value = feature.place_name.replace(", United States", "");
+
+                                createOrMoveMarker(
+                                    markerId,
+                                    feature.geometry.coordinates,
+                                    color
+                                );
+
+                                updateLine();
+                                list.style.display = "none";
+                            });
+
+                            list.appendChild(item);
+                        });
+
+                        list.style.display = "block";
+                    }, 250); // debounce
+                });
+
+                input.addEventListener("blur", () => {
+                    // Delay allows click to register
+                    setTimeout(() => list.style.display = "none", 200);
+                });
+            }
+
+            enableAutocomplete("from-address", "from", "#004360");
+            enableAutocomplete("to-address", "to", "#FF4D4D");            
+        </script>
+    </body>
+</html>
