@@ -185,6 +185,32 @@
                 }
             }
 
+            #result-panel {
+                display: none;
+                position: absolute;
+                top: 250px; /* sits right under address panel */
+                left: 12px;
+                z-index: 100;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                padding: 12px;
+                width: 500px;
+                font-size: 14px;
+            }
+
+            @media screen and (max-width: 800px) {
+                #result-panel {
+                    width: calc(100% - 24px);
+                    left: 12px;
+                    right: 12px;
+                }
+            }
+
+            #result-panel {
+                transition: all 0.2s ease;
+            }
+
             .autocomplete-list {
                 position: absolute;
                 background: white;
@@ -231,14 +257,22 @@
                     cav_level_1: "./data/cav-level-1.geojson",
                     cav_level_2: "./data/cav-level-2.geojson",
                     cav_level_3: "./data/cav-level-3.geojson",                    
-                    routes: "https://gocarta.s3.us-east-2.amazonaws.com/public/data/simple_bus_routes/v1/data.lines.geojson"
+                    routes: "https://gocarta.s3.us-east-2.amazonaws.com/public/data/simple_bus_routes/v1/data.lines.geojson",
+                    fares: {
+                        1: "$3.00",
+                        2: "$3.00",
+                        3: "$3.50"
+                    }
                 },
                 data: {
                 },
                 state: {
                     auth: null,
-                    markers: {
-                    }
+                    levels: {
+                        from: null,
+                        to: null
+                    },
+                    markers: {}
                 }
             };
         </script>
@@ -272,11 +306,13 @@
                         <span id="to-level" class="level-badge">—</span>
                     </div>
                 </label>
-
-                <button id="calculate-btn">Calculate</button>
+            </div>
+            <div id="result-panel">
+                <div id="result-content">
+                </div>
             </div>
         </div>
-        <script>        
+        <script>   
             async function geocodeAddress(query) {
                 const xmin = -86.30115090953136;
                 const xmax = -84.31179646902687;
@@ -298,15 +334,15 @@
                 if (!window.app.state.markers[id]) {
                     window.app.state.markers[id] = new maplibregl.Marker({
                         color,
-                        draggable: true
+                        draggable: false
                     })
                     .setLngLat(lngLat)
                     .addTo(map);
 
-                    window.app.state.markers[id].on("drag", () => {
-                        updateLine();
-                        updateLevelBadge(id, window.app.state.markers[id].getLngLat().toArray());
-                    });
+                    // window.app.state.markers[id].on("drag", () => {
+                    //     updateLine();
+                    //     updateLevelBadge(id, window.app.state.markers[id].getLngLat().toArray());
+                    // });
                 } else {
                     window.app.state.markers[id].setLngLat(lngLat);
                 }
@@ -353,6 +389,7 @@
             }
 
             function updateLine() {
+                console.log("running updateLine");
                 const from = window.app.state.markers.from;
                 const to = window.app.state.markers.to;
                 if (!from || !to) return;
@@ -368,7 +405,7 @@
                     }
                 };
 
-                map.getSource("route-line").setData(newLine);
+                map.getSource("trip-line").setData(newLine);
             }
 
             map.on('load', () => {
@@ -462,25 +499,22 @@
                         }
                     });                    
                 })();
-                
-                const fromCoord = [-85.35, 35.06];
-                const toCoord = [-85.25, 35.04];
 
-                map.addSource("route-line", {
+                map.addSource("trip-line", {
                     type: "geojson",
                     data: {
                         type: "Feature",
                         geometry: {
                             type: "LineString",
-                            coordinates: [fromCoord, toCoord]
+                            coordinates: [[0,0], [0,0]]
                         }
                     }
                 });
 
                 map.addLayer({
-                    id: "route-line-layer",
+                    id: "trip-line-layer",
                     type: "line",
-                    source: "route-line",
+                    source: "trip-line",
                     paint: {
                         "line-color": "#0FFF00",
                         "line-opacity": 1,
@@ -488,14 +522,14 @@
                     }
                 });
 
-                fromMarker.on("drag", updateLine);
-                toMarker.on("drag", updateLine);
+                // fromMarker.on("drag", updateLine);
+                // toMarker.on("drag", updateLine);
             });
 
-            
             function detectProgramLevel(lngLat) {
-                const point = turf.point(lngLat);
+                if (!lngLat) return null;
 
+                const point = turf.point(lngLat);
 
                 if (window.app.data.cav_level_1_geojson.features.some(f => turf.booleanPointInPolygon(point, f.geometry))) {
                     return 1;
@@ -506,16 +540,68 @@
                 if (window.app.data.cav_level_3_geojson.features.some(f => turf.booleanPointInPolygon(point, f.geometry))) {
                     return 3;
                 }
-                return null;
+
+                return "outside";
             }
 
+            function calculateTrip() {
+                console.log("running calculateTrip");
+                const from = window.app.state.levels.from;
+                const to = window.app.state.levels.to;
+
+                const resultPanel = document.getElementById("result-panel");
+                resultPanel.style.display = "block";
+
+                const resultDiv = document.getElementById("result-content");
+
+                if (!from || !to) {
+                    const resultPanel = document.getElementById("result-panel");
+                    resultPanel.style.display = "none";
+                    resultDiv.innerHTML = ``;
+                    return;
+                }
+
+                if (from === "outside" || to === "outside") {
+                    resultDiv.innerHTML = "This trip cannot be serviced because it is outside the service area";
+                    return;
+                }
+
+                // Case 2: valid levels (1–3)
+                const combinedLevel = Math.max(from, to);
+                const fare = window.app.config.fares[combinedLevel];
+
+                let explanation = "";
+
+                if (from === to) {
+                    explanation = `
+                        This trip is from and to the same program level.<br>
+                        The cost of program level ${combinedLevel} trips is ${fare}.
+                    `;
+                } else {
+                    explanation = `
+                        This trip is from program level ${from} to program level ${to}.<br>
+                        We choose the highest program level when calculating fare.<br>
+                        The cost of this trip is ${fare}.
+                    `;
+                }
+
+                resultDiv.innerHTML = `
+                    <strong>Combined Program Level:</strong> ${combinedLevel}<br>
+                    <strong>Fare:</strong> ${fare}<br><br>
+                    ${explanation}
+                `;
+            }
+
+
+            // markerId is "from" or "to"
             function updateLevelBadge(markerId, lngLat) {
-                const level = detectProgramLevel(lngLat);
+                const level = app.state.levels[markerId] = detectProgramLevel(lngLat);
+
                 const badge = document.getElementById(`${markerId}-level`);
 
                 badge.className = "level-badge";
 
-                if (!level) {
+                if (level === "outside") {
                     badge.textContent = "Outside";
                     badge.classList.add("level-none");
                     return;
@@ -526,6 +612,9 @@
             }
             
             async function handleAddressInput(inputId, markerId, color) {
+                // disable results panel
+                document.getElementById("result-panel").style.display = "none";
+
                 const input = document.getElementById(inputId);
 
                 async function geocodeAndPlace() {
@@ -539,6 +628,8 @@
 
                     createOrMoveMarker(markerId, coords, color);
                     updateLine();
+
+                    calculateTrip();
                 }
 
                 input.addEventListener("keydown", (e) => {
@@ -596,6 +687,7 @@
 
                                 updateLine();
                                 list.style.display = "none";
+                                calculateTrip();
                             });
 
                             list.appendChild(item);
