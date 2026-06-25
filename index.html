@@ -620,19 +620,19 @@
 
                 if (from === to) {
                     explanation = `
-                        This trip is from and to the same program level.<br>
-                        The cost of program level ${combinedLevel} trips is ${fare}.
+                        This trip is from and to the same program area.<br>
+                        The cost of program ${combinedLevel} trips is ${fare}.
                     `;
                 } else {
                     explanation = `
-                        This trip is from program level ${from} to program level ${to}.<br>
-                        We choose the highest program level when calculating fare.<br>
+                        This trip is from program area ${from} to program area ${to}.<br>
+                        We choose the highest program area when calculating fare.<br>
                         The cost of this trip is ${fare}.
                     `;
                 }
 
                 resultDiv.innerHTML = `
-                    <strong>Combined Program Level:</strong> ${combinedLevel}<br>
+                    <strong>Combined Program:</strong> ${combinedLevel}<br>
                     <strong>Fare:</strong> ${fare}<br><br>
                     ${explanation}
                 `;
@@ -653,7 +653,7 @@
                     return;
                 }
 
-                badge.textContent = `Level ${level}`;
+                badge.textContent = `Program ${level}`;
                 badge.classList.add(`level-${level}`);
             }
             
